@@ -1,0 +1,157 @@
+version: '1.0' # -> version sudah deprecated di docker versi terbaru
+name: web_sekolah
+
+services:
+  php:
+    build: .
+    container_name: php
+    volumes:
+      - ./web-admin:/var/www/html
+    networks:
+      - backend
+      - frontend
+      - db-siakad-network
+
+  # web admin (siakad)
+  web-admin:
+    image: nginx:alpine
+    container_name: web-admin
+    ports:
+      - "8001:80"
+    volumes:
+      - ./web-admin:/usr/share/nginx/html
+    networks:
+      - backend
+      - frontend
+      - db-siakad-network
+    configs:
+      - source: nginx_config
+        target: /etc/nginx/conf.d/default.conf
+    depends_on:
+      - php
+
+  # web user (website siswa)
+  web-user:
+    image: nginx:alpine
+    container_name: web-user
+    ports:
+      - "8002:80"
+    volumes:
+      - ./web-user:/usr/share/nginx/html
+    networks:
+      - frontend
+      - backend
+      - db-siakad-network
+
+  # database (gunakan mariadb)
+  db-siakad:
+    image: mariadb:10.6
+    container_name: dbsiakad
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: siakad_db
+      MYSQL_USER: siakad_db
+      MYSQL_PASSWORD: siakad_db
+    ports:
+      - "3310:3306"
+    volumes:
+      - siakad_db:/var/lib/mysql
+    networks:
+      - db-siakad-network
+
+  # phpmyadmin (untuk mengelola database siakad)
+  siakad-manager:
+    image: phpmyadmin
+    restart: always
+    ports:
+      - "40001:80"
+    environment:
+      - PMA_HOST=dbsiakad
+      - PMA_PORT=3306
+    networks:
+      - db-siakad-network
+
+  # cms db (database wordpress)
+  db-cms:
+    image: mariadb:10.6
+    container_name: dbcms
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: cms_db
+      MYSQL_USER: cms_db
+      MYSQL_PASSWORD: cms_db
+    ports:
+      - "3311:3306"
+    volumes:
+      - cms_db:/var/lib/mysql
+    networks:
+      - db-cms-network
+
+  # phpmyadmin cms (untuk mengelola database wordpress)
+  cms-manager:
+    image: phpmyadmin
+    restart: always
+    ports:
+      - "40002:80"
+    environment:
+      - PMA_HOST=dbcms
+      - PMA_PORT=3306
+    networks:
+      - db-cms-network
+
+  # wordpress (cms halaman utama sekolah)
+  cms:
+    image: wordpress
+    container_name: cms
+    restart: always
+    ports:
+      - "8003:80"
+    environment:
+      WORDPRESS_DB_HOST: db-cms:3306
+      WORDPRESS_DB_USER: cms_db
+      WORDPRESS_DB_PASSWORD: cms_db
+      WORDPRESS_DB_NAME: cms_db
+    volumes:
+      - cms:/var/www/html
+    networks:
+      - db-cms-network
+      - frontend
+
+  # faker-api (untuk generate data)
+  faker-api:
+    image: node:10-alpine
+    container_name: faker-api
+    working_dir: /faker-api
+    volumes:
+      - ./faker-api:/faker-api
+    ports:
+      - "8004:3000"
+    networks:
+      - backend
+      - frontend
+    command: npm start
+    
+
+networks:
+  db-siakad-network: 
+    driver: bridge
+  db-cms-network:
+    driver: bridge
+  frontend:
+    driver: bridge
+  backend:
+    driver: bridge
+
+volumes:
+  siakad_db:
+    driver: local
+  cms_db:
+    driver: local
+  cms:
+    driver: local
+
+configs:
+  nginx_config:
+    file: ./config/nginx/default.conf
